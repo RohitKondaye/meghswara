@@ -263,8 +263,8 @@ export function App() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+    <div className="h-dvh w-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
         <Sidebar
           activeTab={activeTab}
           onSelectTab={(tab) => {

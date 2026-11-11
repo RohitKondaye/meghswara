@@ -232,18 +232,18 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
         </div>
 
         {/* Quick Queue Actions & Duration */}
-        <div className="flex items-center gap-2 shrink-0 relative">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0 relative">
           <button
             onClick={() => playNextInQueue(track)}
             title="Play Next"
-            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-opacity cursor-pointer"
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-opacity cursor-pointer"
           >
             <ListPlus className="w-4 h-4" />
           </button>
           <button
             onClick={() => addToQueue(track)}
             title="Add to End of Queue"
-            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-opacity cursor-pointer"
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-opacity cursor-pointer"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -254,7 +254,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
                   setPlaylistMenuTrackId((curr) => (curr === track.id ? null : track.id))
                 }
                 title="Add to Playlist"
-                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-amber-300 transition-opacity cursor-pointer"
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-amber-300 transition-opacity cursor-pointer"
               >
                 <ListMusic className="w-4 h-4" />
               </button>
@@ -287,24 +287,24 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
   return (
     <main className="flex-1 flex flex-col min-w-0 bg-zinc-950 overflow-hidden">
       {/* Top Search & Lossless Filter Header */}
-      <header className="h-16 shrink-0 border-b border-zinc-900 px-8 flex items-center justify-between gap-4">
+      <header className="shrink-0 border-b border-zinc-900 px-4 md:px-8 py-2.5 md:py-0 md:h-16 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search lossless tracks, albums, artists, or folders..."
-            className="w-full pl-10 pr-4 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/50"
+            placeholder="Search lossless tracks, albums, artists..."
+            className="w-full pl-10 pr-4 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs sm:text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/50"
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
           {(['all', 'hires', 'flac'] as const).map((filter) => (
             <button
               key={filter}
               onClick={() => setQualityFilter(filter)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 qualityFilter === filter
                   ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40'
                   : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
@@ -320,8 +320,8 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
         </div>
       </header>
 
-      {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto p-8">
+      {/* Scrollable Content Area (extra bottom padding on mobile so Mini-Player & Bottom Nav don't cover items) */}
+      <div className="flex-1 overflow-y-auto p-4 pb-36 md:p-8">
         {/* Album Detail View */}
         {activeTab === 'albums' && selectedAlbum ? (
           <div className="max-w-5xl mx-auto space-y-8">
@@ -414,7 +414,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 md:gap-6">
               {filteredAlbums.map((album) => {
                 const cover = coverMap.get(album.id) || album.demoCoverUrl;
                 const isHiRes =
@@ -423,7 +423,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
                   <div
                     key={album.id}
                     onClick={() => onSelectAlbumId(album.id)}
-                    className="group rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/90 border border-zinc-800/60 hover:border-zinc-700/80 p-3.5 transition-all cursor-pointer flex flex-col gap-3"
+                    className="group rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/90 border border-zinc-800/60 hover:border-zinc-700/80 p-3 md:p-3.5 transition-all cursor-pointer flex flex-col gap-2.5 md:gap-3"
                   >
                     <div className="relative aspect-square rounded-xl bg-zinc-900 overflow-hidden border border-zinc-800">
                       {cover ? (
@@ -438,7 +438,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
                         </div>
                       )}
                       <span
-                        className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-mono backdrop-blur-md border ${
+                        className={`absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-md border ${
                           isHiRes
                             ? 'bg-amber-950/85 text-amber-300 border-amber-500/40'
                             : 'bg-zinc-950/80 text-zinc-200 border-zinc-700/60'
@@ -457,7 +457,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
                             );
                           playTrackList(albumTracks, 0);
                         }}
-                        className="opacity-0 group-hover:opacity-100 absolute bottom-3 right-3 w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-zinc-950 flex items-center justify-center shadow-xl transition-all cursor-pointer"
+                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 absolute bottom-2.5 right-2.5 w-9 h-9 md:w-10 md:h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-zinc-950 flex items-center justify-center shadow-xl transition-all cursor-pointer active:scale-95"
                         title="Play Album"
                       >
                         <Play className="w-4 h-4 fill-current ml-0.5" />

@@ -15,6 +15,8 @@ import {
   Trash2,
   AlertCircle,
   X,
+  ChevronDown,
+  Disc3,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { formatDuration, formatSignalBadge, formatFileSize } from '../utils/formatters';
@@ -55,6 +57,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
   } = usePlayerStore();
 
   const [showSignalPath, setShowSignalPath] = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState(false);
 
   const activeDuration = duration > 0 ? duration : currentTrack?.duration || 0;
   const progressPercent =
@@ -72,12 +75,14 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
     <>
       {/* Error Toast if playback fails */}
       {errorMessage && (
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-rose-950/95 border border-rose-500/40 text-rose-200 text-xs shadow-2xl">
-          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-          <span>{errorMessage}</span>
+        <div className="fixed bottom-36 md:bottom-28 left-1/2 -translate-x-1/2 z-50 w-[90vw] max-w-md flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-rose-950/95 border border-rose-500/40 text-rose-200 text-xs shadow-2xl">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="truncate">{errorMessage}</span>
+          </div>
           <button
             onClick={clearError}
-            className="p-1 hover:bg-rose-900/60 rounded cursor-pointer"
+            className="p-1 hover:bg-rose-900/60 rounded cursor-pointer shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -86,21 +91,32 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
 
       {/* Signal Path Audiophile Popover */}
       {showSignalPath && currentTrack && badge && (
-        <div className="fixed bottom-24 left-72 z-40 w-80 p-4 rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/80 shadow-2xl space-y-3 text-xs">
+        <div className="fixed bottom-24 left-4 right-4 md:left-72 md:right-auto z-50 md:w-80 p-4 rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/80 shadow-2xl space-y-3 text-xs">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-amber-400" />
               <span className="font-semibold text-zinc-100">Lossless Signal Path</span>
             </div>
-            <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono text-[10px]">
-              Bit-Perfect
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono text-[10px]">
+                Bit-Perfect
+              </span>
+              <button
+                onClick={() => setShowSignalPath(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-100"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="space-y-2.5 text-zinc-300">
             <div className="flex items-start justify-between gap-2">
               <span className="text-zinc-400 shrink-0">Raw File:</span>
-              <span className="font-mono text-[11px] text-zinc-200 truncate" title={currentTrack.name}>
+              <span
+                className="font-mono text-[11px] text-zinc-200 truncate"
+                title={currentTrack.name}
+              >
                 {currentTrack.name}
               </span>
             </div>
@@ -150,9 +166,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
         </div>
       )}
 
-      {/* Slide-Up Queue Drawer */}
+      {/* Slide-Up Queue Drawer (Responsive for Mobile & Desktop) */}
       {isQueueOpen && (
-        <div className="fixed right-4 bottom-24 z-40 w-96 max-h-[65vh] flex flex-col rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 shadow-2xl overflow-hidden">
+        <div className="fixed inset-x-3 bottom-20 md:left-auto md:right-4 md:bottom-24 z-50 md:w-96 max-h-[65vh] flex flex-col rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 shadow-2xl overflow-hidden">
           <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-zinc-100">Playback Queue</h3>
@@ -177,7 +193,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
                   <div
                     key={`${track.id}-${idx}`}
                     className={`flex items-center justify-between px-4 py-2.5 text-xs transition-colors ${
-                      isCurrent ? 'bg-amber-500/10 text-amber-300' : 'hover:bg-zinc-800/60 text-zinc-300'
+                      isCurrent
+                        ? 'bg-amber-500/10 text-amber-300'
+                        : 'hover:bg-zinc-800/60 text-zinc-300'
                     }`}
                   >
                     <button
@@ -211,8 +229,232 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
         </div>
       )}
 
-      {/* Main Bottom Player Bar */}
-      <footer className="h-22 shrink-0 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800/80 px-6 flex items-center justify-between gap-6 select-none z-30">
+      {/* Mobile Full-Screen "Now Playing" Sheet (< md) */}
+      {mobileExpanded && currentTrack && (
+        <div className="md:hidden fixed inset-0 z-40 bg-zinc-950/98 backdrop-blur-2xl flex flex-col justify-between p-6 select-none">
+          {/* Top bar */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setMobileExpanded(false)}
+              className="p-2 -ml-2 rounded-xl text-zinc-400 active:bg-zinc-900"
+            >
+              <ChevronDown className="w-6 h-6" />
+            </button>
+            <div className="text-center">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400">
+                Now Streaming
+              </div>
+              <div className="text-xs text-zinc-400 truncate max-w-[200px]">
+                {currentTrack.album}
+              </div>
+            </div>
+            <button
+              onClick={toggleQueueDrawer}
+              className={`p-2 -mr-2 rounded-xl ${
+                isQueueOpen ? 'text-amber-400' : 'text-zinc-400'
+              }`}
+            >
+              <ListMusic className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Center Artwork */}
+          <div className="my-auto py-4 flex flex-col items-center gap-6">
+            <div className="w-64 h-64 sm:w-72 sm:h-72 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-2xl overflow-hidden flex items-center justify-center">
+              {coverUrl ? (
+                <img
+                  src={coverUrl}
+                  alt={currentTrack.album}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Disc3 className="w-20 h-20 text-amber-400/40" />
+              )}
+            </div>
+
+            <div className="w-full text-center space-y-1.5 px-2">
+              <h2 className="text-xl font-bold text-zinc-100 truncate">
+                {currentTrack.title}
+              </h2>
+              <p
+                onClick={() => {
+                  setMobileExpanded(false);
+                  onNavigateToAlbum?.(currentTrack.albumId);
+                }}
+                className="text-sm text-zinc-400 truncate active:text-amber-300"
+              >
+                {currentTrack.artist} — {currentTrack.album}
+              </p>
+
+              {badge && (
+                <div className="pt-1">
+                  <button
+                    onClick={() => setShowSignalPath((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/40"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    {badge.detail}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom Seek & Transport Controls */}
+          <div className="space-y-6 pb-4">
+            <div className="space-y-2">
+              <div className="relative h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="absolute inset-y-0 left-0 bg-zinc-700"
+                  style={{ width: `${bufferedPercent}%` }}
+                />
+                <div
+                  className="absolute inset-y-0 left-0 bg-amber-400"
+                  style={{ width: `${progressPercent}%` }}
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={activeDuration || 100}
+                  step={0.1}
+                  value={currentTime}
+                  onChange={(e) => seek(parseFloat(e.target.value))}
+                  className="absolute inset-0 w-full h-full opacity-0"
+                />
+              </div>
+              <div className="flex justify-between text-[11px] font-mono text-zinc-400">
+                <span>{formatDuration(currentTime)}</span>
+                <span>{formatDuration(activeDuration)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between px-4">
+              <button
+                onClick={toggleShuffle}
+                className={`p-2 rounded-xl ${
+                  shuffle ? 'text-amber-400 bg-amber-500/15' : 'text-zinc-400'
+                }`}
+              >
+                <Shuffle className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={previousTrack}
+                className="p-2 text-zinc-200 active:scale-95"
+              >
+                <SkipBack className="w-7 h-7" />
+              </button>
+
+              <button
+                onClick={togglePlayPause}
+                className="w-16 h-16 rounded-full bg-amber-500 text-zinc-950 flex items-center justify-center shadow-xl shadow-amber-500/25 active:scale-95"
+              >
+                {status === 'buffering' ? (
+                  <Loader2 className="w-7 h-7 animate-spin" />
+                ) : status === 'playing' ? (
+                  <Pause className="w-7 h-7 fill-current" />
+                ) : (
+                  <Play className="w-7 h-7 fill-current ml-1" />
+                )}
+              </button>
+
+              <button
+                onClick={nextTrack}
+                className="p-2 text-zinc-200 active:scale-95"
+              >
+                <SkipForward className="w-7 h-7" />
+              </button>
+
+              <button
+                onClick={cycleRepeatMode}
+                className={`p-2 rounded-xl ${
+                  repeat !== 'off' ? 'text-amber-400 bg-amber-500/15' : 'text-zinc-400'
+                }`}
+              >
+                {repeat === 'one' ? (
+                  <Repeat1 className="w-5 h-5" />
+                ) : (
+                  <Repeat className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Floating Mini-Player Pill (< md, pinned above the 16-height bottom nav bar) */}
+      {currentTrack && !mobileExpanded && (
+        <div
+          onClick={() => setMobileExpanded(true)}
+          className="md:hidden fixed bottom-17 inset-x-2.5 z-30 rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 shadow-2xl overflow-hidden select-none"
+        >
+          {/* Thin progress bar along top edge */}
+          <div className="h-1 w-full bg-zinc-800">
+            <div
+              className="h-full bg-amber-400 transition-all duration-100"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+
+          <div className="px-3 py-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="w-10 h-10 rounded-lg bg-zinc-800 overflow-hidden shrink-0 border border-zinc-700">
+                {coverUrl ? (
+                  <img
+                    src={coverUrl}
+                    alt={currentTrack.album}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[10px] font-mono text-amber-400">
+                    FLAC
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-zinc-100 truncate">
+                  {currentTrack.title}
+                </div>
+                <div className="text-[11px] text-zinc-400 truncate flex items-center gap-1.5">
+                  <span className="truncate">{currentTrack.artist}</span>
+                  {badge && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
+                      {currentTrack.format}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="flex items-center gap-1 shrink-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={togglePlayPause}
+                className="w-9 h-9 rounded-full bg-amber-500 text-zinc-950 flex items-center justify-center active:scale-95"
+              >
+                {status === 'buffering' ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : status === 'playing' ? (
+                  <Pause className="w-4 h-4 fill-current" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                )}
+              </button>
+              <button
+                onClick={nextTrack}
+                className="p-2 text-zinc-300 active:text-white"
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Bottom Player Bar (md+) */}
+      <footer className="hidden md:flex h-22 shrink-0 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800/80 px-6 items-center justify-between gap-6 select-none z-30">
         {/* Left: Track Info & Signal Badge */}
         <div className="w-80 flex items-center gap-3.5 min-w-0">
           {currentTrack ? (
@@ -336,12 +578,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
           <div className="w-full flex items-center gap-3 text-[11px] font-mono text-zinc-400">
             <span className="w-10 text-right">{formatDuration(currentTime)}</span>
             <div className="relative flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden group">
-              {/* Buffered range */}
               <div
                 className="absolute inset-y-0 left-0 bg-zinc-700 transition-all duration-150"
                 style={{ width: `${bufferedPercent}%` }}
               />
-              {/* Playback progress */}
               <div
                 className="absolute inset-y-0 left-0 bg-amber-400 transition-all duration-75"
                 style={{ width: `${progressPercent}%` }}
@@ -353,7 +593,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
                 step={0.1}
                 value={currentTime}
                 disabled={!currentTrack}
-                onChange={(e) => seek( parseFloat(e.target.value) )}
+                onChange={(e) => seek(parseFloat(e.target.value))}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
             </div>
