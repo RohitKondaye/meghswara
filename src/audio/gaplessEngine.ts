@@ -1,7 +1,6 @@
 import {
   buildDriveStreamUrl,
   ensureFreshAccessToken,
-  trySilentTokenRefresh,
 } from '../services/googleAuth';
 import { getCachedTrackBlobUrl } from '../services/offlineCache';
 import { redactTokenFromUrl, reportTelemetry } from '../services/telemetry';
@@ -54,11 +53,13 @@ export class DualDeckGaplessEngine {
     }
   }
 
-  private resolveStreamUrl(track: Track): string {
+  private resolveStreamUrl(track: Track, includeTokenInUrl = false): string {
     if (track.demoStreamUrl) {
       return track.demoStreamUrl;
     }
-    return buildDriveStreamUrl(track.id, track.mimeType || 'audio/flac', track.size);
+    return buildDriveStreamUrl(track.id, track.mimeType || 'audio/flac', track.size, {
+      includeTokenInUrl,
+    });
   }
 
   private bindDeckEvents(deck: HTMLAudioElement): void {
@@ -128,12 +129,13 @@ export class DualDeckGaplessEngine {
         },
       });
 
-      // If the OAuth token expired mid-session, attempt one silent token refresh and retry packet stream
+      // One retry: refresh the token if needed, then fall back to URL-token auth
+      // in case this browser's media stack did not send the stream cookie.
       if (!this.retriedWithFreshToken && !track.demoStreamUrl) {
         this.retriedWithFreshToken = true;
-        const fresh = await trySilentTokenRefresh();
-        if (fresh && this.activeTrack?.id === track.id) {
-          deck.src = this.resolveStreamUrl(track);
+        await ensureFreshAccessToken().catch(() => null);
+        if (this.activeTrack?.id === track.id) {
+          deck.src = this.resolveStreamUrl(track, true);
           deck.load();
           deck.play().catch(() => {});
           return;

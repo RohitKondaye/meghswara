@@ -102,6 +102,19 @@ function scheduleSilentTokenRefresh(expiresInSeconds: number): void {
   }, refreshDelayMs);
 }
 
+/**
+ * Stores the short-lived Drive token in a same-site cookie scoped to the stream endpoints,
+ * so <audio src="/api/stream/:id"> authenticates without putting the token in the URL.
+ */
+function writeStreamAuthCookie(token: string, expiresInSeconds: number): void {
+  if (typeof document === 'undefined') return;
+  const isHttps = window.location.protocol === 'https:';
+  const secureFlag = isHttps ? '; Secure' : '';
+  document.cookie = `meghswara_token=${encodeURIComponent(
+    token
+  )}; path=/; max-age=${Math.max(60, Math.floor(expiresInSeconds))}; SameSite=Strict${secureFlag}`;
+}
+
 export function setManualAccessToken(token: string, expiresInSeconds = 3600): void {
   const clean = token.trim();
   currentAccessToken = clean;
@@ -111,12 +124,7 @@ export function setManualAccessToken(token: string, expiresInSeconds = 3600): vo
   localStorage.setItem(STORAGE_TOKEN_KEY, clean);
   localStorage.setItem(STORAGE_TOKEN_EXPIRY_KEY, String(expiry));
   localStorage.setItem(STORAGE_HAS_AUTHORIZED_KEY, 'true');
-  if (typeof document !== 'undefined') {
-    const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `meghswara_token=${encodeURIComponent(
-      clean
-    )}; path=/; max-age=${expiresInSeconds}; SameSite=Lax${secureFlag}`;
-  }
+  writeStreamAuthCookie(clean, expiresInSeconds);
   syncTokenWithServiceWorker(clean);
   scheduleSilentTokenRefresh(expiresInSeconds);
   authListeners.forEach((cb) => cb(clean));
@@ -134,7 +142,7 @@ export function clearAccessToken(): void {
   localStorage.removeItem(STORAGE_TOKEN_EXPIRY_KEY);
   localStorage.removeItem(STORAGE_HAS_AUTHORIZED_KEY);
   if (typeof document !== 'undefined') {
-    document.cookie = 'meghswara_token=; path=/; max-age=0; SameSite=Lax';
+    document.cookie = 'meghswara_token=; path=/; max-age=0; SameSite=Strict';
   }
   syncTokenWithServiceWorker(null);
   authListeners.forEach((cb) => cb(null));
@@ -214,6 +222,8 @@ export async function registerStreamServiceWorker(): Promise<void> {
   const existingToken = getAccessToken();
   if (existingToken) {
     const remainingSec = Math.max(60, Math.floor((getTokenExpiryTimestamp() - Date.now()) / 1000));
+    // Re-issue the stream cookie on every load (upgrades old SameSite=Lax cookies too)
+    writeStreamAuthCookie(existingToken, remainingSec);
     scheduleSilentTokenRefresh(remainingSec);
   } else if (localStorage.getItem(STORAGE_HAS_AUTHORIZED_KEY) === 'true') {
     // Wait briefly for GIS script to load, then attempt silent restore
@@ -328,19 +338,22 @@ export function signInWithGoogleOAuth(clientId?: string): Promise<string> {
 export function buildDriveStreamUrl(
   fileId: string,
   mimeType = 'audio/flac',
-  fileSize?: number
+  fileSize?: number,
+  options: { includeTokenInUrl?: boolean } = {}
 ): string {
   const token = getAccessToken();
   const params = new URLSearchParams({ mime: mimeType });
   if (fileSize && fileSize > 0) {
     params.set('size', String(fileSize));
   }
-  if (token) {
-    params.set('token', token);
-  }
   const isLocalhost =
     typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  // Production authenticates via the SameSite=Strict cookie. The URL token is only used for the
+  // localhost Service Worker, or as a one-time fallback if a cookie-auth stream fails.
+  if (token && (isLocalhost || options.includeTokenInUrl)) {
+    params.set('token', token);
+  }
   const basePath = isLocalhost ? '/drive-stream' : '/api/stream';
   return `${basePath}/${encodeURIComponent(fileId)}?${params.toString()}`;
 }

@@ -103,7 +103,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           set({ currentTime, duration, bufferedEnd });
         },
         onStateChange: (status) => {
-          set({ status });
+          // A successful (re)start clears any stale error toast from a failed first attempt
+          set(status === 'playing' ? { status, errorMessage: null } : { status });
         },
         onError: (errorMessage) => {
           reportTelemetry({

@@ -23,6 +23,7 @@ import {
   type DriveRootFolderConfig,
 } from '../services/googleAuth';
 import { listDriveFolders, type DriveFileItem } from '../services/driveApi';
+import { PrivacyNotice } from './PrivacyNotice';
 
 interface DriveSetupModalProps {
   isOpen: boolean;
@@ -57,6 +58,7 @@ export const DriveSetupModal: React.FC<DriveSetupModalProps> = ({
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [storageUsedMb, setStorageUsedMb] = useState<string | null>(null);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
   const refreshStorageEstimate = async () => {
     if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
@@ -380,8 +382,19 @@ export const DriveSetupModal: React.FC<DriveSetupModalProps> = ({
               Purge Audio Cache
             </button>
           </div>
+
+          <div className="flex items-center justify-center pt-1">
+            <button
+              type="button"
+              onClick={() => setIsPrivacyOpen(true)}
+              className="text-[11px] text-zinc-500 hover:text-amber-300 underline underline-offset-2 cursor-pointer"
+            >
+              Privacy &amp; Data Use
+            </button>
+          </div>
         </div>
       </div>
+      <PrivacyNotice isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
     </div>
   );
 };
