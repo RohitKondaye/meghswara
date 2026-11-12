@@ -1,4 +1,3 @@
-import { parseBuffer } from 'music-metadata';
 import { db, rebuildAlbumsFromTracks } from '../db/libraryDb';
 import type { Track } from '../types/music';
 import {
@@ -241,7 +240,8 @@ export async function indexTrackHeadersInBackground(
               header = flacResult.parsed;
             }
           } else {
-            // Fallback to music-metadata for ALAC (.m4a), WAV, MP3, OGG
+            // Lazy-load music-metadata only when indexing non-FLAC files (.m4a, .mp3, .wav)
+            const { parseBuffer } = await import('music-metadata');
             const mm = await parseBuffer(bytes, {
               mimeType: track.mimeType,
               size: track.size || undefined,

@@ -111,6 +111,12 @@ export function setManualAccessToken(token: string, expiresInSeconds = 3600): vo
   localStorage.setItem(STORAGE_TOKEN_KEY, clean);
   localStorage.setItem(STORAGE_TOKEN_EXPIRY_KEY, String(expiry));
   localStorage.setItem(STORAGE_HAS_AUTHORIZED_KEY, 'true');
+  if (typeof document !== 'undefined') {
+    const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `meghswara_token=${encodeURIComponent(
+      clean
+    )}; path=/; max-age=${expiresInSeconds}; SameSite=Lax${secureFlag}`;
+  }
   syncTokenWithServiceWorker(clean);
   scheduleSilentTokenRefresh(expiresInSeconds);
   authListeners.forEach((cb) => cb(clean));
@@ -127,6 +133,9 @@ export function clearAccessToken(): void {
   localStorage.removeItem(STORAGE_TOKEN_KEY);
   localStorage.removeItem(STORAGE_TOKEN_EXPIRY_KEY);
   localStorage.removeItem(STORAGE_HAS_AUTHORIZED_KEY);
+  if (typeof document !== 'undefined') {
+    document.cookie = 'meghswara_token=; path=/; max-age=0; SameSite=Lax';
+  }
   syncTokenWithServiceWorker(null);
   authListeners.forEach((cb) => cb(null));
 }
@@ -302,9 +311,16 @@ export function signInWithGoogleOAuth(clientId?: string): Promise<string> {
   });
 }
 
-export function buildDriveStreamUrl(fileId: string, mimeType = 'audio/flac'): string {
+export function buildDriveStreamUrl(
+  fileId: string,
+  mimeType = 'audio/flac',
+  fileSize?: number
+): string {
   const token = getAccessToken();
   const params = new URLSearchParams({ mime: mimeType });
+  if (fileSize && fileSize > 0) {
+    params.set('size', String(fileSize));
+  }
   if (token) {
     params.set('token', token);
   }

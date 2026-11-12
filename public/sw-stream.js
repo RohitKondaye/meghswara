@@ -1,10 +1,13 @@
 /**
  * Service Worker Stream Proxy for Google Drive Lossless Audio
- * Intercepts /drive-stream/:fileId and attaches OAuth 2.0 Bearer token + HTTP Range headers
- * so native HTML5 <audio> elements can stream & seek 100MB+ FLAC files directly from Google's CDN.
+ * Uses Adaptive HTTP 206 Packet Streaming:
+ * - First packet (bytes=0-...): 768 KB for instant mobile & desktop track startup
+ * - Rolling packets: 2 MB chunks for smooth continuous playback & instant seeking
  */
 
 let accessToken = null;
+const INITIAL_PACKET_BYTES = 786432; // 768 KB
+const ROLLING_PACKET_BYTES = 2097152; // 2 MB
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -34,7 +37,7 @@ async function resolveAccessToken() {
   for (const client of clientList) {
     const token = await new Promise((resolve) => {
       const channel = new MessageChannel();
-      const timeout = setTimeout(() => resolve(null), 1500);
+      const timeout = setTimeout(() => resolve(null), 1200);
       channel.port1.onmessage = (evt) => {
         clearTimeout(timeout);
         resolve(evt.data?.token || null);
@@ -49,6 +52,42 @@ async function resolveAccessToken() {
   return null;
 }
 
+function buildPacketRangeHeader(incomingRange, knownFileSize) {
+  if (!incomingRange || !incomingRange.startsWith('bytes=')) {
+    const end =
+      knownFileSize > 0
+        ? Math.min(knownFileSize - 1, INITIAL_PACKET_BYTES - 1)
+        : INITIAL_PACKET_BYTES - 1;
+    return `bytes=0-${end}`;
+  }
+
+  const spec = incomingRange.replace('bytes=', '').trim();
+  const parts = spec.split('-');
+  const start = parseInt(parts[0], 10);
+
+  if (isNaN(start) || start < 0) {
+    return incomingRange;
+  }
+
+  if (parts[1] && parts[1].trim().length > 0) {
+    const requestedEnd = parseInt(parts[1], 10);
+    if (!isNaN(requestedEnd) && requestedEnd >= start) {
+      const maxSpan = start === 0 ? INITIAL_PACKET_BYTES : ROLLING_PACKET_BYTES;
+      const cappedEnd = Math.min(requestedEnd, start + maxSpan - 1);
+      return `bytes=${start}-${
+        knownFileSize > 0 ? Math.min(knownFileSize - 1, cappedEnd) : cappedEnd
+      }`;
+    }
+  }
+
+  const packetSize = start === 0 ? INITIAL_PACKET_BYTES : ROLLING_PACKET_BYTES;
+  let targetEnd = start + packetSize - 1;
+  if (knownFileSize > 0) {
+    targetEnd = Math.min(knownFileSize - 1, targetEnd);
+  }
+  return `bytes=${start}-${targetEnd}`;
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (!url.pathname.startsWith('/drive-stream/')) {
@@ -58,14 +97,22 @@ self.addEventListener('fetch', (event) => {
   const fileId = decodeURIComponent(url.pathname.replace('/drive-stream/', '').trim());
   const fallbackMime = url.searchParams.get('mime') || 'audio/flac';
   const queryToken = url.searchParams.get('token');
+  const knownFileSize = Number(url.searchParams.get('size') || '0');
 
-  event.respondWith(handleDriveStream(event.request, fileId, fallbackMime, queryToken));
+  event.respondWith(
+    handleDriveStream(event.request, fileId, fallbackMime, queryToken, knownFileSize)
+  );
 });
 
-async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
+async function handleDriveStream(
+  request,
+  fileId,
+  fallbackMime,
+  queryToken,
+  knownFileSize
+) {
   const token = queryToken || (await resolveAccessToken());
   if (!token) {
-    // Fall back to the Cloudflare Pages Edge Function if SW has no token
     return fetch(request);
   }
 
@@ -73,13 +120,11 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
   headers.set('Authorization', `Bearer ${token}`);
 
   const rangeHeader = request.headers.get('Range');
-  if (rangeHeader) {
-    headers.set('Range', rangeHeader);
-  } else {
-    headers.set('Range', 'bytes=0-');
-  }
+  headers.set('Range', buildPacketRangeHeader(rangeHeader, knownFileSize));
 
-  const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
+  const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+    fileId
+  )}?alt=media&supportsAllDrives=true`;
 
   try {
     const upstream = await fetch(driveUrl, {
@@ -99,7 +144,6 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
     const responseHeaders = new Headers();
     const rawContentType = (upstream.headers.get('Content-Type') || '').toLowerCase();
 
-    // Normalize 'application/x-flac' or 'application/octet-stream' to 'audio/flac' for mobile browsers
     let normalizedMime = fallbackMime;
     if (rawContentType.includes('flac')) {
       normalizedMime = 'audio/flac';
@@ -131,7 +175,7 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
       statusText: upstream.statusText,
       headers: responseHeaders,
     });
-  } catch (err) {
+  } catch {
     return fetch(request);
   }
 }
