@@ -124,7 +124,7 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
     }
 
     responseHeaders.set('Accept-Ranges', 'bytes');
-    responseHeaders.set('Cache-Control', 'private, max-age=3600');
+    responseHeaders.set('Cache-Control', 'no-store');
 
     return new Response(upstream.body, {
       status: upstream.status,

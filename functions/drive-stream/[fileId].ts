@@ -108,7 +108,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     'Access-Control-Expose-Headers',
     'Content-Length, Content-Range, Accept-Ranges, Content-Type'
   );
-  responseHeaders.set('Cache-Control', 'private, max-age=3600');
+  responseHeaders.set('Cache-Control', 'no-store');
 
   return new Response(upstream.body, {
     status: upstream.status,

@@ -199,7 +199,8 @@ export class DualDeckGaplessEngine {
     if (nextTrack && this.preloadedTrackId === nextTrack.id && this.standbyDeck.src) {
       const previousDeck = this.activeDeck;
       previousDeck.pause();
-      previousDeck.currentTime = 0;
+      previousDeck.removeAttribute('src');
+      previousDeck.load();
 
       this.activeDeck = this.standbyDeck;
       this.standbyDeck = previousDeck;
@@ -264,6 +265,8 @@ export class DualDeckGaplessEngine {
     if (this.preloadedTrackId === track.id && this.standbyDeck.src) {
       this.activeDeck.pause();
       const prev = this.activeDeck;
+      prev.removeAttribute('src');
+      prev.load();
       this.activeDeck = this.standbyDeck;
       this.standbyDeck = prev;
       this.activeTrack = track;

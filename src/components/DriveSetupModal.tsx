@@ -56,8 +56,24 @@ export const DriveSetupModal: React.FC<DriveSetupModalProps> = ({
   const [subfolders, setSubfolders] = useState<DriveFileItem[]>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storageUsedMb, setStorageUsedMb] = useState<string | null>(null);
+
+  const refreshStorageEstimate = async () => {
+    if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
+      try {
+        const est = await navigator.storage.estimate();
+        const mb = ((est.usage || 0) / (1024 * 1024)).toFixed(1);
+        setStorageUsedMb(mb);
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   useEffect(() => {
+    if (isOpen) {
+      refreshStorageEstimate();
+    }
     if (isOpen && isConnected) {
       loadFolderList(browsingParentId);
     }
@@ -338,6 +354,32 @@ export const DriveSetupModal: React.FC<DriveSetupModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Device Storage Footprint & Cache Control */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 flex items-center justify-between gap-3 text-xs">
+            <div className="text-zinc-400">
+              <span className="font-semibold text-zinc-200">MeghSwara Storage Used: </span>
+              <span className="font-mono text-amber-300">
+                {storageUsedMb !== null ? `${storageUsedMb} MB` : 'Calculating...'}
+              </span>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Live streams use <code className="text-zinc-400">Cache-Control: no-store</code> (0 MB disk cache). Note: Android Settings shows Google Chrome&apos;s total browser cache across all sites.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (typeof caches !== 'undefined') {
+                  const keys = await caches.keys();
+                  await Promise.all(keys.map((k) => caches.delete(k)));
+                }
+                await refreshStorageEstimate();
+              }}
+              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium shrink-0 cursor-pointer"
+            >
+              Purge Audio Cache
+            </button>
+          </div>
         </div>
       </div>
     </div>
