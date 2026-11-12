@@ -20,6 +20,8 @@ export class DualDeckGaplessEngine {
   private muted = false;
   private callbacks: AudioEngineCallbacks;
   private rafId: number | null = null;
+  private activeBlobUrl: string | null = null;
+  private isTryingBlobFallback = false;
 
   constructor(callbacks: AudioEngineCallbacks) {
     this.callbacks = callbacks;
@@ -38,28 +40,84 @@ export class DualDeckGaplessEngine {
     return audio;
   }
 
-  private resolveStreamUrl(track: Track, useDirectFallback = false): string {
+  private revokeActiveBlobUrl(): void {
+    if (this.activeBlobUrl) {
+      URL.revokeObjectURL(this.activeBlobUrl);
+      this.activeBlobUrl = null;
+    }
+  }
+
+  private resolveStreamUrl(track: Track): string {
     if (track.demoStreamUrl) {
       return track.demoStreamUrl;
     }
+    // Always route through /drive-stream/:fileId (served by Service Worker or Cloudflare Pages Function)
+    // which normalizes Google Drive's 'application/x-flac' to 'audio/flac' for mobile browsers.
+    return buildDriveStreamUrl(track.id, track.mimeType || 'audio/flac');
+  }
+
+  /**
+   * Mobile fallback: if the native <audio> element on Android/iOS rejects the streaming URL
+   * with NotSupportedError, fetch the file directly from Google Drive API with Bearer auth
+   * and wrap it in a clean audio/flac Blob URL.
+   */
+  private async playViaAuthenticatedBlobFallback(track: Track): Promise<void> {
     const token = getAccessToken();
-    const hasServiceWorker =
-      typeof navigator !== 'undefined' &&
-      'serviceWorker' in navigator &&
-      Boolean(navigator.serviceWorker.controller);
-
-    if (!useDirectFallback && hasServiceWorker) {
-      return buildDriveStreamUrl(track.id, track.mimeType);
+    if (!token) {
+      this.callbacks.onError(
+        'Google Drive session expired. Tap "Drive → Reconnect OAuth" at the top to sign in.'
+      );
+      return;
     }
 
-    // Fallback direct Drive media endpoint with access_token query parameter if SW isn't controlling yet
-    if (token) {
-      return `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+    this.isTryingBlobFallback = true;
+    this.callbacks.onStateChange('buffering');
+
+    try {
+      const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
         track.id
-      )}?alt=media&supportsAllDrives=true&access_token=${encodeURIComponent(token)}`;
-    }
+      )}?alt=media&supportsAllDrives=true`;
 
-    return buildDriveStreamUrl(track.id, track.mimeType);
+      const res = await fetch(driveUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        this.callbacks.onError(
+          'Google Drive session expired (1h token). Tap "Drive → Reconnect OAuth" to refresh.'
+        );
+        return;
+      }
+
+      if (!res.ok) {
+        this.callbacks.onError(`Google Drive error (${res.status}) loading "${track.title}".`);
+        return;
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+      if (this.activeTrack?.id !== track.id) return; // User switched tracks while buffering
+
+      this.revokeActiveBlobUrl();
+      const mime = track.mimeType && track.mimeType !== 'application/x-flac'
+        ? track.mimeType
+        : 'audio/flac';
+      const blob = new Blob([arrayBuffer], { type: mime });
+      this.activeBlobUrl = URL.createObjectURL(blob);
+
+      this.activeDeck.src = this.activeBlobUrl;
+      this.activeDeck.currentTime = 0;
+      this.activeDeck.volume = this.muted ? 0 : this.volume;
+      await this.activeDeck.play();
+    } catch (err) {
+      this.callbacks.onError(
+        err instanceof Error ? err.message : `Unable to play "${track.title}"`
+      );
+    } finally {
+      this.isTryingBlobFallback = false;
+    }
   }
 
   private bindDeckEvents(deck: HTMLAudioElement): void {
@@ -71,7 +129,7 @@ export class DualDeckGaplessEngine {
 
     deck.addEventListener('pause', () => {
       if (deck !== this.activeDeck) return;
-      if (!deck.ended) {
+      if (!deck.ended && !this.isTryingBlobFallback) {
         this.callbacks.onStateChange('paused');
       }
       this.stopProgressLoop();
@@ -100,18 +158,12 @@ export class DualDeckGaplessEngine {
 
     deck.addEventListener('error', () => {
       if (deck !== this.activeDeck || !this.activeTrack) return;
-      // If Service Worker stream URL failed (e.g. SW woke up before token sync), retry with direct token URL
-      if (deck.src.includes('/drive-stream/') && getAccessToken()) {
-        const currentTime = deck.currentTime || 0;
-        deck.src = this.resolveStreamUrl(this.activeTrack, true);
-        deck.currentTime = currentTime;
-        deck.play().catch((err) => {
-          this.callbacks.onError(err instanceof Error ? err.message : 'Playback error');
-        });
+      if (!this.isTryingBlobFallback && !deck.src.startsWith('blob:')) {
+        this.playViaAuthenticatedBlobFallback(this.activeTrack);
         return;
       }
       this.callbacks.onError(
-        `Unable to stream "${this.activeTrack.title}". Verify Google Drive connection.`
+        `Unable to stream "${this.activeTrack.title}". Tap "Drive → Reconnect OAuth" if your session expired.`
       );
     });
   }
@@ -134,7 +186,6 @@ export class DualDeckGaplessEngine {
     const tick = () => {
       if (!this.activeDeck.paused) {
         this.emitTimeUpdate();
-        // Micro-gapless check right before track ends
         const dur = this.activeDeck.duration;
         if (
           Number.isFinite(dur) &&
@@ -193,7 +244,6 @@ export class DualDeckGaplessEngine {
     const nextTrack = this.callbacks.getNextTrack();
 
     if (nextTrack && this.preloadedTrackId === nextTrack.id && this.standbyDeck.src) {
-      // Seamless gapless deck swap!
       const previousDeck = this.activeDeck;
       previousDeck.pause();
       previousDeck.currentTime = 0;
@@ -204,8 +254,8 @@ export class DualDeckGaplessEngine {
       this.preloadedTrackId = null;
 
       this.activeDeck.volume = this.muted ? 0 : this.volume;
-      this.activeDeck.play().catch((err) => {
-        this.callbacks.onError(err instanceof Error ? err.message : 'Gapless handoff failed');
+      this.activeDeck.play().catch(() => {
+        this.playViaAuthenticatedBlobFallback(nextTrack);
       });
 
       this.callbacks.onTrackEnded(true);
@@ -216,8 +266,16 @@ export class DualDeckGaplessEngine {
 
   public async playTrack(track: Track): Promise<void> {
     this.stopProgressLoop();
+    this.revokeActiveBlobUrl();
+    this.isTryingBlobFallback = false;
 
-    // If the requested track is already pre-buffered in standbyDeck, swap decks immediately
+    if (!track.demoStreamUrl && !getAccessToken()) {
+      this.callbacks.onError(
+        'Google Drive session expired. Tap "Drive → Reconnect OAuth" at the top to sign in.'
+      );
+      return;
+    }
+
     if (this.preloadedTrackId === track.id && this.standbyDeck.src) {
       this.activeDeck.pause();
       const prev = this.activeDeck;
@@ -227,8 +285,13 @@ export class DualDeckGaplessEngine {
       this.preloadedTrackId = null;
       this.activeDeck.currentTime = 0;
       this.activeDeck.volume = this.muted ? 0 : this.volume;
-      await this.activeDeck.play();
-      return;
+      try {
+        await this.activeDeck.play();
+        return;
+      } catch {
+        await this.playViaAuthenticatedBlobFallback(track);
+        return;
+      }
     }
 
     this.activeTrack = track;
@@ -237,14 +300,22 @@ export class DualDeckGaplessEngine {
     this.activeDeck.src = this.resolveStreamUrl(track);
     this.activeDeck.currentTime = 0;
     this.activeDeck.volume = this.muted ? 0 : this.volume;
-    await this.activeDeck.play();
+
+    try {
+      await this.activeDeck.play();
+    } catch {
+      // If mobile browser rejected /drive-stream/ with NotSupportedError, seamlessly fall back to authenticated Blob stream
+      await this.playViaAuthenticatedBlobFallback(track);
+    }
   }
 
   public togglePlayPause(): void {
     if (!this.activeTrack) return;
     if (this.activeDeck.paused) {
-      this.activeDeck.play().catch((err) => {
-        this.callbacks.onError(err instanceof Error ? err.message : 'Unable to resume');
+      this.activeDeck.play().catch(() => {
+        if (this.activeTrack) {
+          this.playViaAuthenticatedBlobFallback(this.activeTrack);
+        }
       });
     } else {
       this.activeDeck.pause();

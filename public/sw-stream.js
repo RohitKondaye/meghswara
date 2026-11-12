@@ -65,7 +65,8 @@ self.addEventListener('fetch', (event) => {
 async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
   const token = queryToken || (await resolveAccessToken());
   if (!token) {
-    return new Response('Missing Google Drive OAuth access token in Service Worker', { status: 401 });
+    // Fall back to the Cloudflare Pages Edge Function if SW has no token
+    return fetch(request);
   }
 
   const headers = new Headers();
@@ -74,6 +75,8 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
   const rangeHeader = request.headers.get('Range');
   if (rangeHeader) {
     headers.set('Range', rangeHeader);
+  } else {
+    headers.set('Range', 'bytes=0-');
   }
 
   const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
@@ -94,11 +97,21 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
     }
 
     const responseHeaders = new Headers();
-    const contentType = upstream.headers.get('Content-Type');
-    responseHeaders.set(
-      'Content-Type',
-      contentType && contentType !== 'application/octet-stream' ? contentType : fallbackMime
-    );
+    const rawContentType = (upstream.headers.get('Content-Type') || '').toLowerCase();
+
+    // Normalize 'application/x-flac' or 'application/octet-stream' to 'audio/flac' for mobile browsers
+    let normalizedMime = fallbackMime;
+    if (rawContentType.includes('flac')) {
+      normalizedMime = 'audio/flac';
+    } else if (
+      rawContentType &&
+      rawContentType !== 'application/octet-stream' &&
+      rawContentType !== 'binary/octet-stream'
+    ) {
+      normalizedMime = rawContentType;
+    }
+
+    responseHeaders.set('Content-Type', normalizedMime);
 
     const contentLength = upstream.headers.get('Content-Length');
     if (contentLength) {
@@ -119,8 +132,6 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
       headers: responseHeaders,
     });
   } catch (err) {
-    return new Response(`Drive stream error: ${err instanceof Error ? err.message : String(err)}`, {
-      status: 502,
-    });
+    return fetch(request);
   }
 }
