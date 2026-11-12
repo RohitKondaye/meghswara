@@ -4,7 +4,11 @@
  * with HTTP 206 Partial Content and normalized 'audio/flac' MIME type.
  */
 
-interface Env {}
+import { appendTelemetryEvent } from '../api/telemetry';
+
+interface Env {
+  MEGHSWARA_TELEMETRY?: KVNamespace;
+}
 
 function parseCookieToken(cookieHeader: string | null): string | null {
   if (!cookieHeader) return null;
@@ -13,7 +17,7 @@ function parseCookieToken(cookieHeader: string | null): string | null {
 }
 
 export const onRequest: PagesFunction<Env> = async (context) => {
-  const { request, params } = context;
+  const { request, params, env } = context;
   const origin = request.headers.get('Origin') || '*';
 
   if (request.method === 'OPTIONS') {
@@ -44,6 +48,24 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     authHeader?.replace(/^Bearer\s+/i, '').trim() || cookieToken || queryToken;
 
   if (!token) {
+    context.waitUntil(
+      appendTelemetryEvent(env.MEGHSWARA_TELEMETRY, {
+        source: 'edge-stream',
+        level: 'error',
+        category: 'edge-missing-token',
+        message: `Missing Google Drive OAuth token on /drive-stream/${fileId}`,
+        device: {
+          userAgent: request.headers.get('User-Agent') || undefined,
+        },
+        track: { id: fileId, mimeType: fallbackMime },
+        details: {
+          hasAuthHeader: Boolean(authHeader),
+          hasCookie: Boolean(cookieToken),
+          hasQueryToken: Boolean(queryToken),
+          range: request.headers.get('Range'),
+        },
+      })
+    );
     return new Response('Missing Google Drive OAuth token', { status: 401 });
   }
 
@@ -67,7 +89,27 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   });
 
   if (!upstream.ok && upstream.status !== 206) {
-    return new Response(upstream.body, {
+    const errBody = await upstream.text().catch(() => '');
+    context.waitUntil(
+      appendTelemetryEvent(env.MEGHSWARA_TELEMETRY, {
+        source: 'edge-stream',
+        level: 'error',
+        category: `drive-upstream-${upstream.status}`,
+        message: `Google Drive upstream returned HTTP ${upstream.status} for file ${fileId}`,
+        device: {
+          userAgent: request.headers.get('User-Agent') || undefined,
+        },
+        track: { id: fileId, mimeType: fallbackMime },
+        details: {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          rangeSent: upstreamHeaders.get('Range'),
+          tokenSource: authHeader ? 'header' : cookieToken ? 'cookie' : 'query',
+          upstreamErrorBody: errBody.slice(0, 500),
+        },
+      })
+    );
+    return new Response(errBody, {
       status: upstream.status,
       statusText: upstream.statusText,
       headers: {

@@ -4,6 +4,7 @@ import {
   trySilentTokenRefresh,
 } from '../services/googleAuth';
 import { getCachedTrackBlobUrl } from '../services/offlineCache';
+import { redactTokenFromUrl, reportTelemetry } from '../services/telemetry';
 import { eqGraph, useEqualizerStore } from './equalizerEngine';
 import type { Track } from '../types/music';
 
@@ -100,6 +101,32 @@ export class DualDeckGaplessEngine {
     deck.addEventListener('error', async () => {
       if (deck !== this.activeDeck || !this.activeTrack) return;
       const track = this.activeTrack;
+      const mediaErr = deck.error;
+      const codeMap: Record<number, string> = {
+        1: 'MEDIA_ERR_ABORTED',
+        2: 'MEDIA_ERR_NETWORK',
+        3: 'MEDIA_ERR_DECODE',
+        4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+      };
+
+      reportTelemetry({
+        level: 'error',
+        category: 'audio-deck-error',
+        message: `Audio element error (${
+          mediaErr ? codeMap[mediaErr.code] || mediaErr.code : 'unknown'
+        }): ${mediaErr?.message || 'no details'}`,
+        track,
+        details: {
+          mediaErrorCode: mediaErr?.code,
+          mediaErrorName: mediaErr ? codeMap[mediaErr.code] : undefined,
+          mediaErrorMessage: mediaErr?.message,
+          networkState: deck.networkState,
+          readyState: deck.readyState,
+          currentTime: deck.currentTime,
+          retriedWithFreshToken: this.retriedWithFreshToken,
+          src: redactTokenFromUrl(deck.currentSrc || deck.src),
+        },
+      });
 
       // If the OAuth token expired mid-session, attempt one silent token refresh and retry packet stream
       if (!this.retriedWithFreshToken && !track.demoStreamUrl) {

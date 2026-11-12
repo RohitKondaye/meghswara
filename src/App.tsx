@@ -26,6 +26,7 @@ import { PlayerBar } from './components/PlayerBar';
 import { DriveSetupModal } from './components/DriveSetupModal';
 import { usePlayerStore } from './store/playerStore';
 import { useOfflineStore } from './services/offlineCache';
+import { initGlobalErrorTelemetry, reportTelemetry } from './services/telemetry';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('albums');
@@ -55,6 +56,7 @@ export function App() {
 
   // Initialize Service Worker, Offline Cache index, & seed demo library if DB is empty
   useEffect(() => {
+    initGlobalErrorTelemetry();
     registerStreamServiceWorker();
     useOfflineStore.getState().refreshPinnedList();
     const unsub = subscribeAuthChanges(async (token) => {
@@ -166,9 +168,14 @@ export function App() {
     } catch (err) {
       setScanProgress(null);
       setIndexerProgress(null);
-      setStatusMessage(
-        err instanceof Error ? err.message : 'Error scanning Google Drive folder'
-      );
+      const msg = err instanceof Error ? err.message : 'Error scanning Google Drive folder';
+      reportTelemetry({
+        level: 'error',
+        category: 'drive-scan-error',
+        message: msg,
+        details: { folderId: folder.id, folderName: folder.name },
+      });
+      setStatusMessage(msg);
       setIsDriveModalOpen(true);
     }
   };
@@ -256,9 +263,13 @@ export function App() {
       );
       setIsDriveModalOpen(false);
     } catch (err) {
-      setStatusMessage(
-        err instanceof Error ? err.message : 'Failed to load library index from Drive'
-      );
+      const msg = err instanceof Error ? err.message : 'Failed to load library index from Drive';
+      reportTelemetry({
+        level: 'error',
+        category: 'drive-load-index-error',
+        message: msg,
+      });
+      setStatusMessage(msg);
     } finally {
       setIsSyncingCloud(false);
     }

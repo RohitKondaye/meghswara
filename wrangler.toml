@@ -1,0 +1,7 @@
+name = "meghswara"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-04-01"
+
+[[kv_namespaces]]
+binding = "MEGHSWARA_TELEMETRY"
+id = "c234a50100c34178be05970d2cf88f99"

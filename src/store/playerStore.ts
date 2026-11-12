@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DualDeckGaplessEngine } from '../audio/gaplessEngine';
 import { db } from '../db/libraryDb';
+import { reportTelemetry } from '../services/telemetry';
 import type { Track } from '../types/music';
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -105,6 +106,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           set({ status });
         },
         onError: (errorMessage) => {
+          reportTelemetry({
+            level: 'error',
+            category: 'player-onError',
+            message: errorMessage,
+            track: get().currentTrack,
+          });
           set({ status: 'paused', errorMessage });
         },
         getNextTrack: () => {
@@ -196,9 +203,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
       updateMediaSessionMetadata(targetTrack);
       engine.playTrack(targetTrack).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Unable to start playback';
+        reportTelemetry({
+          level: 'error',
+          category: 'playTrack-exception',
+          message: msg,
+          track: targetTrack,
+          details: { name: (err as { name?: string })?.name },
+        });
         set({
           status: 'paused',
-          errorMessage: err instanceof Error ? err.message : 'Unable to start playback',
+          errorMessage: msg,
         });
       });
     },
@@ -259,9 +274,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       });
       updateMediaSessionMetadata(targetTrack);
       engine.playTrack(targetTrack).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Unable to start playback';
+        reportTelemetry({
+          level: 'error',
+          category: 'playTrack-exception',
+          message: msg,
+          track: targetTrack,
+          details: { name: (err as { name?: string })?.name },
+        });
         set({
           status: 'paused',
-          errorMessage: err instanceof Error ? err.message : 'Unable to start playback',
+          errorMessage: msg,
         });
       });
     },
