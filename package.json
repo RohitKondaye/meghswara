@@ -8,7 +8,12 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "deploy": "npm run build && npx wrangler pages deploy dist --project-name=meghswara --branch=main"
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name=meghswara --branch=main",
+    "logs": "node scripts/telemetry.mjs",
+    "logs:clear": "node scripts/telemetry.mjs --clear"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "clsx": "^2.1.1",
