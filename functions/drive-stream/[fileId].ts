@@ -1,5 +1,5 @@
 /**
- * Cloudflare Pages Edge Function for /drive-stream/:fileId
+ * Cloudflare Pages Edge Function for /drive-stream/:fileId and /api/stream/:fileId
  * Streams raw lossless FLAC audio directly from Google Drive using HTTP/2 ReadableStream frames
  * with HTTP 206 Partial Content and normalized 'audio/flac' MIME type.
  */
@@ -53,7 +53,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         source: 'edge-stream',
         level: 'error',
         category: 'edge-missing-token',
-        message: `Missing Google Drive OAuth token on /drive-stream/${fileId}`,
+        message: `Missing Google Drive OAuth token on stream ${fileId}`,
         device: {
           userAgent: request.headers.get('User-Agent') || undefined,
         },
@@ -151,6 +151,29 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     'Content-Length, Content-Range, Accept-Ranges, Content-Type'
   );
   responseHeaders.set('Cache-Control', 'no-store');
+
+  if (!incomingRange || incomingRange === 'bytes=0-') {
+    context.waitUntil(
+      appendTelemetryEvent(env.MEGHSWARA_TELEMETRY, {
+        source: 'edge-stream',
+        level: 'info',
+        category: 'edge-stream-206-ok',
+        message: `Streaming 206 Partial Content for ${fileId} (${normalizedMime})`,
+        device: {
+          userAgent: request.headers.get('User-Agent') || undefined,
+        },
+        track: { id: fileId, mimeType: normalizedMime },
+        details: {
+          upstreamStatus: upstream.status,
+          rawContentType,
+          normalizedMime,
+          contentRange,
+          contentLength,
+          incomingRange: incomingRange || '(none)',
+        },
+      })
+    );
+  }
 
   return new Response(upstream.body, {
     status: upstream.status,

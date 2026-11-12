@@ -1,7 +1,6 @@
 /**
- * Service Worker Stream Proxy for Google Drive Lossless Audio
- * Streams HTTP 206 Partial Content directly from Google Drive CDN via ReadableStream frames
- * while normalizing 'application/x-flac' to 'audio/flac' for mobile & desktop browsers.
+ * Localhost Development Service Worker Stream Proxy for Google Drive Lossless Audio
+ * Note: On production Cloudflare Pages, /api/stream/:fileId is handled directly by Cloudflare Edge Functions.
  */
 
 let accessToken = null;
@@ -11,6 +10,10 @@ self.addEventListener('install', () => {
 });
 
 self.addEventListener('activate', (event) => {
+  if (self.location.hostname !== 'localhost' && self.location.hostname !== '127.0.0.1') {
+    event.waitUntil(self.registration.unregister());
+    return;
+  }
   event.waitUntil(self.clients.claim());
 });
 
@@ -50,6 +53,9 @@ async function resolveAccessToken() {
 }
 
 self.addEventListener('fetch', (event) => {
+  if (self.location.hostname !== 'localhost' && self.location.hostname !== '127.0.0.1') {
+    return;
+  }
   const url = new URL(event.request.url);
   if (!url.pathname.startsWith('/drive-stream/')) {
     return;
@@ -58,11 +64,12 @@ self.addEventListener('fetch', (event) => {
   const fileId = decodeURIComponent(url.pathname.replace('/drive-stream/', '').trim());
   const fallbackMime = url.searchParams.get('mime') || 'audio/flac';
   const queryToken = url.searchParams.get('token');
+  const querySize = Number(url.searchParams.get('size') || '0');
 
-  event.respondWith(handleDriveStream(event.request, fileId, fallbackMime, queryToken));
+  event.respondWith(handleDriveStream(event.request, fileId, fallbackMime, queryToken, querySize));
 });
 
-async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
+async function handleDriveStream(request, fileId, fallbackMime, queryToken, querySize) {
   const token = queryToken || (await resolveAccessToken());
   if (!token) {
     return fetch(request);
@@ -74,8 +81,6 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
   const rangeHeader = request.headers.get('Range');
   if (rangeHeader) {
     headers.set('Range', rangeHeader);
-  } else {
-    headers.set('Range', 'bytes=0-');
   }
 
   const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
@@ -121,6 +126,8 @@ async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
     const contentRange = upstream.headers.get('Content-Range');
     if (contentRange) {
       responseHeaders.set('Content-Range', contentRange);
+    } else if (upstream.status === 206 && querySize > 0) {
+      responseHeaders.set('Content-Range', `bytes 0-${querySize - 1}/${querySize}`);
     }
 
     responseHeaders.set('Accept-Ranges', 'bytes');

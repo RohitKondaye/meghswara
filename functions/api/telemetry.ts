@@ -27,8 +27,7 @@ interface Env {
   MEGHSWARA_TELEMETRY?: KVNamespace;
 }
 
-const KV_KEY = 'recent_telemetry_events_v1';
-const MAX_EVENTS = 100;
+const KEY_PREFIX = 'evt:';
 
 export async function appendTelemetryEvent(
   kv: KVNamespace | undefined,
@@ -36,18 +35,19 @@ export async function appendTelemetryEvent(
 ): Promise<void> {
   if (!kv) return;
   try {
-    const existingRaw = await kv.get(KV_KEY);
-    const list: TelemetryEvent[] = existingRaw ? JSON.parse(existingRaw) : [];
+    const now = Date.now();
+    const revTs = String(9999999999999 - now).padStart(13, '0');
+    const rand = Math.random().toString(36).slice(2, 7);
+    const id = `${now}-${rand}`;
+    const key = `${KEY_PREFIX}${revTs}:${rand}`;
     const entry: TelemetryEvent = {
       ...event,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      timestamp: event.timestamp || new Date().toISOString(),
+      id,
+      timestamp: event.timestamp || new Date(now).toISOString(),
     };
-    list.unshift(entry);
-    if (list.length > MAX_EVENTS) {
-      list.length = MAX_EVENTS;
-    }
-    await kv.put(KV_KEY, JSON.stringify(list), { expirationTtl: 60 * 60 * 24 * 7 });
+    await kv.put(key, JSON.stringify(entry), {
+      expirationTtl: 60 * 60 * 24 * 7,
+    });
   } catch {
     // Never fail request if telemetry write fails
   }
@@ -74,8 +74,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    const raw = await env.MEGHSWARA_TELEMETRY.get(KV_KEY);
-    const events: TelemetryEvent[] = raw ? JSON.parse(raw) : [];
+    const listed = await env.MEGHSWARA_TELEMETRY.list({ prefix: KEY_PREFIX, limit: 60 });
+    const events: TelemetryEvent[] = [];
+    await Promise.all(
+      listed.keys.map(async (k) => {
+        const raw = await env.MEGHSWARA_TELEMETRY!.get(k.name);
+        if (raw) {
+          try {
+            events.push(JSON.parse(raw) as TelemetryEvent);
+          } catch {
+            // ignore malformed
+          }
+        }
+      })
+    );
+    events.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     return new Response(
       JSON.stringify({ ok: true, count: events.length, events }, null, 2),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -84,7 +97,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (request.method === 'DELETE') {
     if (env.MEGHSWARA_TELEMETRY) {
-      await env.MEGHSWARA_TELEMETRY.delete(KV_KEY);
+      const listed = await env.MEGHSWARA_TELEMETRY.list({ prefix: KEY_PREFIX, limit: 200 });
+      await Promise.all(listed.keys.map((k) => env.MEGHSWARA_TELEMETRY!.delete(k.name)));
     }
     return new Response(
       JSON.stringify({ ok: true, cleared: true }),

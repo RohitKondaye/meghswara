@@ -238,6 +238,20 @@ export async function registerStreamServiceWorker(): Promise<void> {
   }
 
   try {
+    const isLocalhost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (!isLocalhost) {
+      // On production Cloudflare Pages, /api/stream/:fileId is served natively by Edge Functions.
+      // Unregister any old Service Worker stream proxy so mobile ExoPlayer/AVPlayer never hit CORS-stripped 206 responses.
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.unregister().catch(() => {});
+      }
+      return;
+    }
+
     const registration = await navigator.serviceWorker.register('/sw-stream.js', {
       scope: '/',
     });
@@ -324,5 +338,9 @@ export function buildDriveStreamUrl(
   if (token) {
     params.set('token', token);
   }
-  return `/drive-stream/${encodeURIComponent(fileId)}?${params.toString()}`;
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const basePath = isLocalhost ? '/drive-stream' : '/api/stream';
+  return `${basePath}/${encodeURIComponent(fileId)}?${params.toString()}`;
 }
