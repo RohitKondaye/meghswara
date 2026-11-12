@@ -19,6 +19,8 @@ export interface PlayerState {
   shuffle: boolean;
   repeat: RepeatMode;
   isQueueOpen: boolean;
+  isLyricsOpen: boolean;
+  isEqOpen: boolean;
   errorMessage: string | null;
   gaplessTransitionsCount: number;
 
@@ -38,6 +40,9 @@ export interface PlayerState {
   toggleShuffle: () => void;
   cycleRepeatMode: () => void;
   toggleQueueDrawer: () => void;
+  toggleLyricsDrawer: () => void;
+  toggleEqDrawer: () => void;
+  syncEqGraph: () => void;
   clearError: () => void;
 }
 
@@ -162,6 +167,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     shuffle: false,
     repeat: 'off',
     isQueueOpen: false,
+    isLyricsOpen: false,
+    isEqOpen: false,
     errorMessage: null,
     gaplessTransitionsCount: 0,
 
@@ -336,7 +343,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
 
     toggleQueueDrawer: () => {
-      set((s) => ({ isQueueOpen: !s.isQueueOpen }));
+      set((s) => ({
+        isQueueOpen: !s.isQueueOpen,
+        isLyricsOpen: false,
+        isEqOpen: false,
+      }));
+    },
+
+    toggleLyricsDrawer: () => {
+      set((s) => ({
+        isLyricsOpen: !s.isLyricsOpen,
+        isQueueOpen: false,
+        isEqOpen: false,
+      }));
+    },
+
+    toggleEqDrawer: () => {
+      set((s) => ({
+        isEqOpen: !s.isEqOpen,
+        isQueueOpen: false,
+        isLyricsOpen: false,
+      }));
+    },
+
+    syncEqGraph: () => {
+      ensureEngine().connectEqIfEnabled();
     },
 
     clearError: () => {

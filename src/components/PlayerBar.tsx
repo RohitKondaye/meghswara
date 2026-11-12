@@ -17,9 +17,14 @@ import {
   X,
   ChevronDown,
   Disc3,
+  Mic2,
+  Sliders,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
+import { useEqualizerStore } from '../audio/equalizerEngine';
 import { formatDuration, formatSignalBadge, formatFileSize } from '../utils/formatters';
+import { LyricsDrawer } from './LyricsDrawer';
+import { EqualizerDrawer } from './EqualizerDrawer';
 
 interface PlayerBarProps {
   coverMap: Map<string, string>;
@@ -40,6 +45,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
     shuffle,
     repeat,
     isQueueOpen,
+    isLyricsOpen,
+    isEqOpen,
     errorMessage,
     gaplessTransitionsCount,
     togglePlayPause,
@@ -51,10 +58,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
     toggleShuffle,
     cycleRepeatMode,
     toggleQueueDrawer,
+    toggleLyricsDrawer,
+    toggleEqDrawer,
     jumpToQueueIndex,
     removeFromQueue,
     clearError,
   } = usePlayerStore();
+  const eqEnabled = useEqualizerStore((s) => s.enabled);
 
   const [showSignalPath, setShowSignalPath] = useState(false);
   const [mobileExpanded, setMobileExpanded] = useState(false);
@@ -73,6 +83,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
 
   return (
     <>
+      <LyricsDrawer />
+      <EqualizerDrawer />
+
       {/* Error Toast if playback fails */}
       {errorMessage && (
         <div className="fixed bottom-36 md:bottom-28 left-1/2 -translate-x-1/2 z-50 w-[90vw] max-w-md flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-rose-950/95 border border-rose-500/40 text-rose-200 text-xs shadow-2xl">
@@ -248,14 +261,35 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
                 {currentTrack.album}
               </div>
             </div>
-            <button
-              onClick={toggleQueueDrawer}
-              className={`p-2 -mr-2 rounded-xl ${
-                isQueueOpen ? 'text-amber-400' : 'text-zinc-400'
-              }`}
-            >
-              <ListMusic className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1 -mr-2">
+              <button
+                onClick={toggleLyricsDrawer}
+                className={`p-2 rounded-xl ${
+                  isLyricsOpen ? 'text-amber-400 bg-amber-500/15' : 'text-zinc-400'
+                }`}
+                title="Synchronized Lyrics"
+              >
+                <Mic2 className="w-5 h-5" />
+              </button>
+              <button
+                onClick={toggleEqDrawer}
+                className={`p-2 rounded-xl ${
+                  isEqOpen || eqEnabled ? 'text-amber-400 bg-amber-500/15' : 'text-zinc-400'
+                }`}
+                title="10-Band Equalizer & Spectrum"
+              >
+                <Sliders className="w-5 h-5" />
+              </button>
+              <button
+                onClick={toggleQueueDrawer}
+                className={`p-2 rounded-xl ${
+                  isQueueOpen ? 'text-amber-400 bg-amber-500/15' : 'text-zinc-400'
+                }`}
+                title="Playback Queue"
+              >
+                <ListMusic className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Center Artwork */}
@@ -601,8 +635,34 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ coverMap, onNavigateToAlbu
           </div>
         </div>
 
-        {/* Right: Queue & Volume Controls */}
-        <div className="w-64 flex items-center justify-end gap-3">
+        {/* Right: Lyrics, EQ, Queue & Volume Controls */}
+        <div className="w-80 flex items-center justify-end gap-2">
+          <button
+            onClick={toggleLyricsDrawer}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+              isLyricsOpen
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
+            }`}
+            title="Synchronized LRC Lyrics"
+          >
+            <Mic2 className="w-3.5 h-3.5" />
+            <span>Lyrics</span>
+          </button>
+
+          <button
+            onClick={toggleEqDrawer}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+              isEqOpen || eqEnabled
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
+            }`}
+            title="10-Band Equalizer & Live Spectrum Visualizer"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>EQ</span>
+          </button>
+
           <button
             onClick={toggleQueueDrawer}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${

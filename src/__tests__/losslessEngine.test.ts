@@ -6,6 +6,8 @@ import {
   shuffleQueueKeepingCurrent,
 } from '../store/playerStore';
 import { formatSignalBadge } from '../utils/formatters';
+import { parseLrcText } from '../services/lyricsService';
+import { EQ_FREQUENCIES, EQ_PRESETS } from '../audio/equalizerEngine';
 import type { Track } from '../types/music';
 
 describe('Google Drive Folder & Path Metadata Parser', () => {
@@ -160,5 +162,21 @@ describe('Queue & Lossless Signal Badge Logic', () => {
     });
     expect(cdLossless.tier).toBe('lossless');
     expect(cdLossless.detail).toContain('16-bit / 44.1 kHz');
+  });
+
+  it('parses synchronized LRC lyrics timestamps accurately', () => {
+    const lrc = '[00:12.50] First line\n[01:05.250] Second line';
+    const lines = parseLrcText(lrc);
+    expect(lines).toHaveLength(2);
+    expect(lines[0].time).toBeCloseTo(12.5, 2);
+    expect(lines[0].text).toBe('First line');
+    expect(lines[1].time).toBeCloseTo(65.25, 2);
+    expect(lines[1].text).toBe('Second line');
+  });
+
+  it('defines 10-band equalizer frequencies and presets', () => {
+    expect(EQ_FREQUENCIES).toHaveLength(10);
+    expect(EQ_PRESETS.harman.gains).toHaveLength(10);
+    expect(EQ_PRESETS.flat.gains.every((g) => g === 0)).toBe(true);
   });
 });

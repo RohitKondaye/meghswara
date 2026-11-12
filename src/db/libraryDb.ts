@@ -1,11 +1,19 @@
 import Dexie, { type Table } from 'dexie';
 import type { Album, CoverArtRecord, Playlist, Track } from '../types/music';
 
+export interface LyricsRecord {
+  trackId: string;
+  syncedLyrics?: string;
+  plainLyrics?: string;
+  updatedAt: number;
+}
+
 export class LibraryDatabase extends Dexie {
   tracks!: Table<Track, string>;
   albums!: Table<Album, string>;
   covers!: Table<CoverArtRecord, string>;
   playlists!: Table<Playlist, string>;
+  lyrics!: Table<LyricsRecord, string>;
 
   constructor() {
     super('AetherHiFiLibraryDB');
@@ -14,6 +22,13 @@ export class LibraryDatabase extends Dexie {
       albums: 'id, title, artist, year, isLossless',
       covers: 'albumId, updatedAt',
       playlists: 'id, name, updatedAt',
+    });
+    this.version(2).stores({
+      tracks: 'id, albumId, artist, album, title, format, isLossless, isHeaderIndexed, folderPath',
+      albums: 'id, title, artist, year, isLossless',
+      covers: 'albumId, updatedAt',
+      playlists: 'id, name, updatedAt',
+      lyrics: 'trackId, updatedAt',
     });
   }
 }

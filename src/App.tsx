@@ -25,6 +25,7 @@ import { LibraryViews } from './components/LibraryViews';
 import { PlayerBar } from './components/PlayerBar';
 import { DriveSetupModal } from './components/DriveSetupModal';
 import { usePlayerStore } from './store/playerStore';
+import { useOfflineStore } from './services/offlineCache';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('albums');
@@ -52,9 +53,10 @@ export function App() {
     return map;
   }, [covers]);
 
-  // Initialize Service Worker & seed demo library if DB is empty
+  // Initialize Service Worker, Offline Cache index, & seed demo library if DB is empty
   useEffect(() => {
     registerStreamServiceWorker();
+    useOfflineStore.getState().refreshPinnedList();
     const unsub = subscribeAuthChanges(async (token) => {
       const connected = Boolean(token);
       setIsConnected(connected);

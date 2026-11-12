@@ -12,10 +12,14 @@ import {
   ListMusic,
   Sparkles,
   Volume2,
+  Download,
+  CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import type { Album, Playlist, Track } from '../types/music';
 import type { NavTab } from './Sidebar';
 import { usePlayerStore } from '../store/playerStore';
+import { useOfflineStore } from '../services/offlineCache';
 import {
   formatDuration,
   formatFileSize,
@@ -44,7 +48,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
   onSelectAlbumId,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [qualityFilter, setQualityFilter] = useState<'all' | 'hires' | 'flac'>('all');
+  const [qualityFilter, setQualityFilter] = useState<'all' | 'hires' | 'flac' | 'offline'>('all');
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [playlistMenuTrackId, setPlaylistMenuTrackId] = useState<string | null>(null);
@@ -58,6 +62,9 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
     togglePlayPause,
   } = usePlayerStore();
 
+  const { pinnedTrackIds, downloadingProgress, pinTrack, unpinTrack, pinAlbumTracks } =
+    useOfflineStore();
+
   const filteredTracks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return tracks.filter((t) => {
@@ -65,6 +72,8 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
         const isHiRes = t.isLossless && ((t.bitsPerSample || 16) > 16 || (t.sampleRate || 44100) > 48000);
         if (!isHiRes) return false;
       } else if (qualityFilter === 'flac' && t.format !== 'FLAC') {
+        return false;
+      } else if (qualityFilter === 'offline' && !pinnedTrackIds.has(t.id)) {
         return false;
       }
 
@@ -231,8 +240,30 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
           )}
         </div>
 
-        {/* Quick Queue Actions & Duration */}
+        {/* Quick Queue & Offline Pin Actions & Duration */}
         <div className="flex items-center gap-1 md:gap-2 shrink-0 relative">
+          {downloadingProgress[track.id] !== undefined ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/15 text-amber-300 font-mono text-[10px]">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {downloadingProgress[track.id]}%
+            </span>
+          ) : pinnedTrackIds.has(track.id) ? (
+            <button
+              onClick={() => unpinTrack(track.id)}
+              title="Pinned Offline (Click to remove offline cache)"
+              className="p-1.5 rounded-lg text-emerald-400 hover:bg-zinc-800 cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => pinTrack(track)}
+              title="Pin FLAC Offline to Device"
+              className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-amber-300 transition-opacity cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={() => playNextInQueue(track)}
             title="Play Next"
@@ -300,7 +331,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
-          {(['all', 'hires', 'flac'] as const).map((filter) => (
+          {(['all', 'hires', 'flac', 'offline'] as const).map((filter) => (
             <button
               key={filter}
               onClick={() => setQualityFilter(filter)}
@@ -314,7 +345,9 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
                 ? 'All Formats'
                 : filter === 'hires'
                 ? 'Hi-Res 24-Bit'
-                : 'FLAC Only'}
+                : filter === 'flac'
+                ? 'FLAC Only'
+                : `Offline (${pinnedTrackIds.size})`}
             </button>
           ))}
         </div>
@@ -372,7 +405,7 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
                   Drive Path: {selectedAlbum.folderPath}
                 </p>
 
-                <div className="pt-2 flex items-center gap-3">
+                <div className="pt-2 flex items-center gap-2.5 flex-wrap">
                   <button
                     onClick={() => playTrackList(selectedAlbumTracks, 0)}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm shadow-lg shadow-amber-500/20 cursor-pointer"
@@ -389,6 +422,13 @@ export const LibraryViews: React.FC<LibraryViewsProps> = ({
                   >
                     <Shuffle className="w-4 h-4" />
                     Shuffle
+                  </button>
+                  <button
+                    onClick={() => pinAlbumTracks(selectedAlbumTracks)}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-emerald-300 border border-emerald-500/30 text-sm font-medium cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    Pin Album Offline
                   </button>
                 </div>
               </div>

@@ -1,4 +1,6 @@
-import { buildDriveStreamUrl, getAccessToken } from '../services/googleAuth';
+import { buildDriveStreamUrl, ensureFreshAccessToken, getAccessToken } from '../services/googleAuth';
+import { getCachedTrackBlobUrl } from '../services/offlineCache';
+import { eqGraph, useEqualizerStore } from './equalizerEngine';
 import type { Track } from '../types/music';
 
 export interface AudioEngineCallbacks {
@@ -269,11 +271,35 @@ export class DualDeckGaplessEngine {
     this.revokeActiveBlobUrl();
     this.isTryingBlobFallback = false;
 
-    if (!track.demoStreamUrl && !getAccessToken()) {
-      this.callbacks.onError(
-        'Google Drive session expired. Tap "Drive → Reconnect OAuth" at the top to sign in.'
-      );
+    // 1. Check if the user has pinned this FLAC track for offline playback!
+    const offlineBlobUrl = await getCachedTrackBlobUrl(track.id);
+    if (offlineBlobUrl) {
+      this.activeTrack = track;
+      this.preloadedTrackId = null;
+      this.activeBlobUrl = offlineBlobUrl;
+      this.activeDeck.src = offlineBlobUrl;
+      this.activeDeck.currentTime = 0;
+      this.activeDeck.volume = this.muted ? 0 : this.volume;
+      if (useEqualizerStore.getState().enabled) {
+        this.connectEqIfEnabled();
+      }
+      await this.activeDeck.play();
       return;
+    }
+
+    // 2. Ensure Google OAuth token is valid (silently auto-refreshing if near expiry)
+    if (!track.demoStreamUrl) {
+      const validToken = await ensureFreshAccessToken();
+      if (!validToken) {
+        this.callbacks.onError(
+          'Google Drive session expired. Tap "Drive → Reconnect OAuth" at the top to sign in.'
+        );
+        return;
+      }
+    }
+
+    if (useEqualizerStore.getState().enabled) {
+      this.connectEqIfEnabled();
     }
 
     if (this.preloadedTrackId === track.id && this.standbyDeck.src) {
@@ -341,5 +367,11 @@ export class DualDeckGaplessEngine {
     const effective = muted ? 0 : this.volume;
     this.activeDeck.volume = effective;
     this.standbyDeck.volume = effective;
+  }
+
+  public connectEqIfEnabled(): void {
+    const eqState = useEqualizerStore.getState();
+    eqGraph.attachAudioElements(this.deckA, this.deckB);
+    eqGraph.applySettings(eqState.enabled, eqState.preampDb, eqState.gains);
   }
 }
