@@ -121,10 +121,9 @@ export class DualDeckGaplessEngine {
 
   private emitTimeUpdate(): void {
     const deck = this.activeDeck;
-    const duration =
-      Number.isFinite(deck.duration) && deck.duration > 0
-        ? deck.duration
-        : this.activeTrack?.duration || 0;
+    const deckDur = Number.isFinite(deck.duration) && deck.duration > 0 ? deck.duration : 0;
+    const trackDur = this.activeTrack?.duration || 0;
+    const duration = Math.max(deckDur, trackDur);
     let bufferedEnd = 0;
     if (deck.buffered && deck.buffered.length > 0) {
       bufferedEnd = deck.buffered.end(deck.buffered.length - 1);
@@ -137,10 +136,13 @@ export class DualDeckGaplessEngine {
     const tick = () => {
       if (!this.activeDeck.paused) {
         this.emitTimeUpdate();
-        const dur = this.activeDeck.duration;
+        const deckDur =
+          Number.isFinite(this.activeDeck.duration) && this.activeDeck.duration > 0
+            ? this.activeDeck.duration
+            : 0;
+        const dur = Math.max(deckDur, this.activeTrack?.duration || 0);
         if (
-          Number.isFinite(dur) &&
-          dur > 2 &&
+          dur > 10 &&
           this.preloadedTrackId &&
           dur - this.activeDeck.currentTime <= 0.045
         ) {
@@ -162,15 +164,13 @@ export class DualDeckGaplessEngine {
 
   private checkPreloadStandbyDeck(): void {
     const deck = this.activeDeck;
-    const dur =
-      Number.isFinite(deck.duration) && deck.duration > 0
-        ? deck.duration
-        : this.activeTrack?.duration || 0;
-    if (dur <= 0) return;
+    const deckDur = Number.isFinite(deck.duration) && deck.duration > 0 ? deck.duration : 0;
+    const dur = Math.max(deckDur, this.activeTrack?.duration || 0);
+    if (dur <= 10) return;
 
     const remaining = dur - deck.currentTime;
     // Only preload the next track when <= 12 seconds remain so standbyDeck never steals mobile bandwidth on startup
-    if (remaining <= 12) {
+    if (remaining <= 12 && deck.currentTime > 5) {
       const nextTrack = this.callbacks.getNextTrack();
       if (nextTrack && nextTrack.id !== this.preloadedTrackId) {
         this.preloadNextTrack(nextTrack);

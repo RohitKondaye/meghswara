@@ -1,13 +1,10 @@
 /**
  * Service Worker Stream Proxy for Google Drive Lossless Audio
- * Uses Adaptive HTTP 206 Packet Streaming:
- * - First packet (bytes=0-...): 768 KB for instant mobile & desktop track startup
- * - Rolling packets: 2 MB chunks for smooth continuous playback & instant seeking
+ * Streams HTTP 206 Partial Content directly from Google Drive CDN via ReadableStream frames
+ * while normalizing 'application/x-flac' to 'audio/flac' for mobile & desktop browsers.
  */
 
 let accessToken = null;
-const INITIAL_PACKET_BYTES = 786432; // 768 KB
-const ROLLING_PACKET_BYTES = 2097152; // 2 MB
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -52,42 +49,6 @@ async function resolveAccessToken() {
   return null;
 }
 
-function buildPacketRangeHeader(incomingRange, knownFileSize) {
-  if (!incomingRange || !incomingRange.startsWith('bytes=')) {
-    const end =
-      knownFileSize > 0
-        ? Math.min(knownFileSize - 1, INITIAL_PACKET_BYTES - 1)
-        : INITIAL_PACKET_BYTES - 1;
-    return `bytes=0-${end}`;
-  }
-
-  const spec = incomingRange.replace('bytes=', '').trim();
-  const parts = spec.split('-');
-  const start = parseInt(parts[0], 10);
-
-  if (isNaN(start) || start < 0) {
-    return incomingRange;
-  }
-
-  if (parts[1] && parts[1].trim().length > 0) {
-    const requestedEnd = parseInt(parts[1], 10);
-    if (!isNaN(requestedEnd) && requestedEnd >= start) {
-      const maxSpan = start === 0 ? INITIAL_PACKET_BYTES : ROLLING_PACKET_BYTES;
-      const cappedEnd = Math.min(requestedEnd, start + maxSpan - 1);
-      return `bytes=${start}-${
-        knownFileSize > 0 ? Math.min(knownFileSize - 1, cappedEnd) : cappedEnd
-      }`;
-    }
-  }
-
-  const packetSize = start === 0 ? INITIAL_PACKET_BYTES : ROLLING_PACKET_BYTES;
-  let targetEnd = start + packetSize - 1;
-  if (knownFileSize > 0) {
-    targetEnd = Math.min(knownFileSize - 1, targetEnd);
-  }
-  return `bytes=${start}-${targetEnd}`;
-}
-
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (!url.pathname.startsWith('/drive-stream/')) {
@@ -97,20 +58,11 @@ self.addEventListener('fetch', (event) => {
   const fileId = decodeURIComponent(url.pathname.replace('/drive-stream/', '').trim());
   const fallbackMime = url.searchParams.get('mime') || 'audio/flac';
   const queryToken = url.searchParams.get('token');
-  const knownFileSize = Number(url.searchParams.get('size') || '0');
 
-  event.respondWith(
-    handleDriveStream(event.request, fileId, fallbackMime, queryToken, knownFileSize)
-  );
+  event.respondWith(handleDriveStream(event.request, fileId, fallbackMime, queryToken));
 });
 
-async function handleDriveStream(
-  request,
-  fileId,
-  fallbackMime,
-  queryToken,
-  knownFileSize
-) {
+async function handleDriveStream(request, fileId, fallbackMime, queryToken) {
   const token = queryToken || (await resolveAccessToken());
   if (!token) {
     return fetch(request);
@@ -120,7 +72,11 @@ async function handleDriveStream(
   headers.set('Authorization', `Bearer ${token}`);
 
   const rangeHeader = request.headers.get('Range');
-  headers.set('Range', buildPacketRangeHeader(rangeHeader, knownFileSize));
+  if (rangeHeader) {
+    headers.set('Range', rangeHeader);
+  } else {
+    headers.set('Range', 'bytes=0-');
+  }
 
   const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
     fileId
